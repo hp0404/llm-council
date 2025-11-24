@@ -1,6 +1,7 @@
 """Configuration for the LLM Council."""
 
 import os
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -15,7 +16,9 @@ SECRET_AUTH_TOKEN = os.getenv("SECRET_AUTH_TOKEN")
 # Default: localhost for development
 # Production: Set to your deployed frontend URL(s)
 # Example: ALLOWED_ORIGINS=https://myapp.com,https://www.myapp.com
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000")
+ALLOWED_ORIGINS = os.getenv(
+    "ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000"
+)
 
 # Council members - list of OpenRouter model identifiers
 # NOTE: These are fallback values. Primary defaults are in backend/models.py

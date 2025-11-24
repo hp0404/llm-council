@@ -1,12 +1,14 @@
 """OpenRouter API client for making LLM requests."""
 
-import httpx
 import json
 import logging
 import os
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import Any
+
+import httpx
 from sqlalchemy import create_engine, text
+
 from .config import OPENROUTER_API_KEY, OPENROUTER_API_URL
 
 logger = logging.getLogger("llm_logger")
@@ -24,7 +26,9 @@ def llm_call(
     completion: Any | None = None,
     task: str | None = None,
     completion_type: str | None = None,
-    set_daily_max_tokens: int | None = None,  # kept for backwards compatibility, ignored
+    set_daily_max_tokens: (
+        int | None
+    ) = None,  # kept for backwards compatibility, ignored
     is_batched: bool = False,
     database_url: str | None = None,
 ) -> None:
@@ -91,7 +95,9 @@ def llm_call(
                 )
         else:
             token_fields["prompt_tokens"] = getattr(usage, "prompt_tokens", 0) or 0
-            token_fields["completion_tokens"] = getattr(usage, "completion_tokens", 0) or 0
+            token_fields["completion_tokens"] = (
+                getattr(usage, "completion_tokens", 0) or 0
+            )
             token_fields["total_tokens"] = getattr(usage, "total_tokens", 0) or 0
 
             prompt_details = getattr(usage, "prompt_tokens_details", None)
@@ -123,7 +129,9 @@ def llm_call(
         provider = "openrouter"
 
     if completion_type is None:
-        completion_type = getattr(completion, "object", None) or completion.get("object", "chat")
+        completion_type = getattr(completion, "object", None) or completion.get(
+            "object", "chat"
+        )
 
     if model is None:
         model_val = getattr(completion, "model", None) or completion.get("model")
@@ -147,8 +155,7 @@ def llm_call(
         completion_dict = {
             k: getattr(completion, k)
             for k in dir(completion)
-            if not k.startswith("_")
-            and not callable(getattr(completion, k))
+            if not k.startswith("_") and not callable(getattr(completion, k))
         }
 
     completion_json = json.dumps(completion_dict)
@@ -251,10 +258,8 @@ def llm_call(
 
 
 async def query_model(
-    model: str,
-    messages: List[Dict[str, str]],
-    timeout: float = 120.0
-) -> Optional[Dict[str, Any]]:
+    model: str, messages: list[dict[str, str]], timeout: float = 120.0
+) -> dict[str, Any] | None:
     """
     Query a single model via OpenRouter API.
 
@@ -279,26 +284,24 @@ async def query_model(
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(
-                OPENROUTER_API_URL,
-                headers=headers,
-                json=payload
+                OPENROUTER_API_URL, headers=headers, json=payload
             )
             response.raise_for_status()
 
             data = response.json()
-            message = data['choices'][0]['message']
+            message = data["choices"][0]["message"]
 
             # Extract system prompt and user message for logging
             system_prompt = None
             user_message = None
             for msg in messages:
-                if msg.get('role') == 'system':
-                    system_prompt = msg.get('content')
-                elif msg.get('role') == 'user':
-                    user_message = msg.get('content')
+                if msg.get("role") == "system":
+                    system_prompt = msg.get("content")
+                elif msg.get("role") == "user":
+                    user_message = msg.get("content")
 
             # Extract provider from response (e.g., "Novita", "OpenAI", etc.)
-            provider = data.get('provider', 'openrouter')
+            provider = data.get("provider", "openrouter")
 
             # Log the LLM call
             try:
@@ -315,8 +318,8 @@ async def query_model(
                 logger.error(f"Failed to log LLM call for model {model}: {log_error}")
 
             return {
-                'content': message.get('content'),
-                'reasoning_details': message.get('reasoning_details')
+                "content": message.get("content"),
+                "reasoning_details": message.get("reasoning_details"),
             }
 
     except Exception as e:
@@ -325,9 +328,8 @@ async def query_model(
 
 
 async def query_models_parallel(
-    models: List[str],
-    messages: List[Dict[str, str]]
-) -> Dict[str, Optional[Dict[str, Any]]]:
+    models: list[str], messages: list[dict[str, str]]
+) -> dict[str, dict[str, Any] | None]:
     """
     Query multiple models in parallel.
 
