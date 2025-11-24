@@ -1,19 +1,40 @@
 import { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatInterface from './components/ChatInterface';
-import { api } from './api';
+import Login from './components/Login';
+import { api, auth } from './api';
 import './App.css';
 
 function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [conversations, setConversations] = useState([]);
   const [currentConversationId, setCurrentConversationId] = useState(null);
   const [currentConversation, setCurrentConversation] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Load conversations on mount
+  // Check authentication on mount
   useEffect(() => {
-    loadConversations();
+    const token = auth.getToken();
+    if (token) {
+      // Verify token is still valid
+      auth.verifyToken(token).then((isValid) => {
+        if (isValid) {
+          setIsAuthenticated(true);
+        } else {
+          auth.clearToken();
+        }
+      }).catch(() => {
+        auth.clearToken();
+      });
+    }
   }, []);
+
+  // Load conversations on mount (only when authenticated)
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadConversations();
+    }
+  }, [isAuthenticated]);
 
   // Load conversation details when selected
   useEffect(() => {
@@ -28,6 +49,9 @@ function App() {
       setConversations(convs);
     } catch (error) {
       console.error('Failed to load conversations:', error);
+      if (error.message === 'Authentication failed') {
+        setIsAuthenticated(false);
+      }
     }
   };
 
@@ -37,6 +61,9 @@ function App() {
       setCurrentConversation(conv);
     } catch (error) {
       console.error('Failed to load conversation:', error);
+      if (error.message === 'Authentication failed') {
+        setIsAuthenticated(false);
+      }
     }
   };
 
@@ -50,6 +77,9 @@ function App() {
       setCurrentConversationId(newConv.id);
     } catch (error) {
       console.error('Failed to create conversation:', error);
+      if (error.message === 'Authentication failed') {
+        setIsAuthenticated(false);
+      }
     }
   };
 
@@ -172,6 +202,9 @@ function App() {
       });
     } catch (error) {
       console.error('Failed to send message:', error);
+      if (error.message === 'Authentication failed') {
+        setIsAuthenticated(false);
+      }
       // Remove optimistic messages on error
       setCurrentConversation((prev) => ({
         ...prev,
@@ -180,6 +213,15 @@ function App() {
       setIsLoading(false);
     }
   };
+
+  const handleAuthenticated = () => {
+    setIsAuthenticated(true);
+  };
+
+  // Show login screen if not authenticated
+  if (!isAuthenticated) {
+    return <Login onAuthenticated={handleAuthenticated} />;
+  }
 
   return (
     <div className="app">

@@ -8,6 +8,15 @@ load_dotenv()
 # OpenRouter API key
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
+# Auth secret token - REQUIRED for security
+SECRET_AUTH_TOKEN = os.getenv("SECRET_AUTH_TOKEN")
+
+# Allowed CORS origins - comma-separated list
+# Default: localhost for development
+# Production: Set to your deployed frontend URL(s)
+# Example: ALLOWED_ORIGINS=https://myapp.com,https://www.myapp.com
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000")
+
 # Council members - list of OpenRouter model identifiers
 COUNCIL_MODELS = [
     "openai/gpt-5.1",

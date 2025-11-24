@@ -4,13 +4,63 @@
 
 const API_BASE = 'http://localhost:8001';
 
+// Auth token management - uses environment variable for localStorage key
+const AUTH_TOKEN_KEY = import.meta.env.VITE_AUTH_TOKEN_KEY;
+
+export const auth = {
+  getToken() {
+    return localStorage.getItem(AUTH_TOKEN_KEY);
+  },
+  
+  setToken(token) {
+    localStorage.setItem(AUTH_TOKEN_KEY, token);
+  },
+  
+  clearToken() {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+  },
+  
+  /**
+   * Verify token by attempting to use it with a real API call.
+   * This is more secure than having a dedicated verify endpoint which
+   * could be abused for brute-force attacks.
+   */
+  async verifyToken(token) {
+    try {
+      const response = await fetch(`${API_BASE}/api/conversations`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Auth-Token': token,
+        },
+      });
+      return response.ok;
+    } catch (error) {
+      return false;
+    }
+  },
+};
+
+function getAuthHeaders() {
+  const token = auth.getToken();
+  return {
+    'Content-Type': 'application/json',
+    ...(token && { 'X-Auth-Token': token }),
+  };
+}
+
 export const api = {
   /**
    * List all conversations.
    */
   async listConversations() {
-    const response = await fetch(`${API_BASE}/api/conversations`);
+    const response = await fetch(`${API_BASE}/api/conversations`, {
+      headers: getAuthHeaders(),
+    });
     if (!response.ok) {
+      if (response.status === 401) {
+        auth.clearToken();
+        throw new Error('Authentication failed');
+      }
       throw new Error('Failed to list conversations');
     }
     return response.json();
@@ -22,12 +72,14 @@ export const api = {
   async createConversation() {
     const response = await fetch(`${API_BASE}/api/conversations`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify({}),
     });
     if (!response.ok) {
+      if (response.status === 401) {
+        auth.clearToken();
+        throw new Error('Authentication failed');
+      }
       throw new Error('Failed to create conversation');
     }
     return response.json();
@@ -38,9 +90,16 @@ export const api = {
    */
   async getConversation(conversationId) {
     const response = await fetch(
-      `${API_BASE}/api/conversations/${conversationId}`
+      `${API_BASE}/api/conversations/${conversationId}`,
+      {
+        headers: getAuthHeaders(),
+      }
     );
     if (!response.ok) {
+      if (response.status === 401) {
+        auth.clearToken();
+        throw new Error('Authentication failed');
+      }
       throw new Error('Failed to get conversation');
     }
     return response.json();
@@ -54,13 +113,15 @@ export const api = {
       `${API_BASE}/api/conversations/${conversationId}/message`,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ content }),
       }
     );
     if (!response.ok) {
+      if (response.status === 401) {
+        auth.clearToken();
+        throw new Error('Authentication failed');
+      }
       throw new Error('Failed to send message');
     }
     return response.json();
@@ -78,14 +139,16 @@ export const api = {
       `${API_BASE}/api/conversations/${conversationId}/message/stream`,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ content }),
       }
     );
 
     if (!response.ok) {
+      if (response.status === 401) {
+        auth.clearToken();
+        throw new Error('Authentication failed');
+      }
       throw new Error('Failed to send message');
     }
 

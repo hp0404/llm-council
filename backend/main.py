@@ -1,27 +1,99 @@
 """FastAPI backend for LLM Council."""
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import uuid
 import json
 import asyncio
+import secrets
+import os
+from collections import defaultdict
+from time import time
 
 from . import storage
 from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
+from .config import SECRET_AUTH_TOKEN
 
 app = FastAPI(title="LLM Council API")
 
-# Enable CORS for local development
+# Configure CORS - supports both development and production
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Rate limiting for authentication - simple in-memory implementation
+# For production, consider Redis-based rate limiting
+_auth_attempts = defaultdict(list)
+_MAX_AUTH_ATTEMPTS = 5
+_AUTH_WINDOW_SECONDS = 300  # 5 minutes
+
+
+def check_rate_limit(identifier: str) -> bool:
+    """Check if the identifier has exceeded rate limit."""
+    now = time()
+    # Clean old attempts
+    _auth_attempts[identifier] = [t for t in _auth_attempts[identifier] if now - t < _AUTH_WINDOW_SECONDS]
+    
+    # Check limit
+    if len(_auth_attempts[identifier]) >= _MAX_AUTH_ATTEMPTS:
+        return False
+    
+    # Record attempt
+    _auth_attempts[identifier].append(now)
+    return True
+
+
+# Authentication dependency with timing-attack protection
+async def verify_token(request: Request, x_auth_token: Optional[str] = Header(None)):
+    """Verify the authentication token from the request header.
+    
+    Uses constant-time comparison to prevent timing attacks.
+    """
+    if not SECRET_AUTH_TOKEN:
+        raise HTTPException(
+            status_code=500,
+            detail="Server configuration error: SECRET_AUTH_TOKEN not set"
+        )
+    
+    # Get client identifier for rate limiting
+    client_ip = request.client.host if request.client else "unknown"
+    
+    # Check if provided token
+    if x_auth_token is None:
+        # Record failed attempt
+        if not check_rate_limit(f"auth_fail_{client_ip}"):
+            raise HTTPException(
+                status_code=429,
+                detail="Too many authentication attempts. Please try again later."
+            )
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing authentication token"
+        )
+    
+    # Use constant-time comparison to prevent timing attacks
+    if not secrets.compare_digest(x_auth_token, SECRET_AUTH_TOKEN):
+        # Record failed attempt
+        if not check_rate_limit(f"auth_fail_{client_ip}"):
+            raise HTTPException(
+                status_code=429,
+                detail="Too many authentication attempts. Please try again later."
+            )
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing authentication token"
+        )
+    
+    return True
 
 
 class CreateConversationRequest(BaseModel):
@@ -52,27 +124,27 @@ class Conversation(BaseModel):
 
 @app.get("/")
 async def root():
-    """Health check endpoint."""
+    """Health check endpoint - no sensitive information exposed."""
     return {"status": "ok", "service": "LLM Council API"}
 
 
 @app.get("/api/conversations", response_model=List[ConversationMetadata])
-async def list_conversations():
-    """List all conversations (metadata only)."""
+async def list_conversations(request: Request, authenticated: bool = Depends(verify_token)):
+    """List all conversations (metadata only). Requires authentication."""
     return storage.list_conversations()
 
 
 @app.post("/api/conversations", response_model=Conversation)
-async def create_conversation(request: CreateConversationRequest):
-    """Create a new conversation."""
+async def create_conversation(create_req: CreateConversationRequest, request: Request = None, authenticated: bool = Depends(verify_token)):
+    """Create a new conversation. Requires authentication."""
     conversation_id = str(uuid.uuid4())
     conversation = storage.create_conversation(conversation_id)
     return conversation
 
 
 @app.get("/api/conversations/{conversation_id}", response_model=Conversation)
-async def get_conversation(conversation_id: str):
-    """Get a specific conversation with all its messages."""
+async def get_conversation(conversation_id: str, request: Request = None, authenticated: bool = Depends(verify_token)):
+    """Get a specific conversation with all its messages. Requires authentication."""
     conversation = storage.get_conversation(conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -80,10 +152,11 @@ async def get_conversation(conversation_id: str):
 
 
 @app.post("/api/conversations/{conversation_id}/message")
-async def send_message(conversation_id: str, request: SendMessageRequest):
+async def send_message(conversation_id: str, msg_request: SendMessageRequest, request: Request = None, authenticated: bool = Depends(verify_token)):
     """
     Send a message and run the 3-stage council process.
     Returns the complete response with all stages.
+    Requires authentication.
     """
     # Check if conversation exists
     conversation = storage.get_conversation(conversation_id)
@@ -94,16 +167,16 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
     is_first_message = len(conversation["messages"]) == 0
 
     # Add user message
-    storage.add_user_message(conversation_id, request.content)
+    storage.add_user_message(conversation_id, msg_request.content)
 
     # If this is the first message, generate a title
     if is_first_message:
-        title = await generate_conversation_title(request.content)
+        title = await generate_conversation_title(msg_request.content)
         storage.update_conversation_title(conversation_id, title)
 
     # Run the 3-stage council process
     stage1_results, stage2_results, stage3_result, metadata = await run_full_council(
-        request.content
+        msg_request.content
     )
 
     # Add assistant message with all stages
@@ -124,10 +197,11 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
 
 
 @app.post("/api/conversations/{conversation_id}/message/stream")
-async def send_message_stream(conversation_id: str, request: SendMessageRequest):
+async def send_message_stream(conversation_id: str, msg_request: SendMessageRequest, request: Request = None, authenticated: bool = Depends(verify_token)):
     """
     Send a message and stream the 3-stage council process.
     Returns Server-Sent Events as each stage completes.
+    Requires authentication.
     """
     # Check if conversation exists
     conversation = storage.get_conversation(conversation_id)
@@ -140,27 +214,27 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
     async def event_generator():
         try:
             # Add user message
-            storage.add_user_message(conversation_id, request.content)
+            storage.add_user_message(conversation_id, msg_request.content)
 
             # Start title generation in parallel (don't await yet)
             title_task = None
             if is_first_message:
-                title_task = asyncio.create_task(generate_conversation_title(request.content))
+                title_task = asyncio.create_task(generate_conversation_title(msg_request.content))
 
             # Stage 1: Collect responses
             yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
-            stage1_results = await stage1_collect_responses(request.content)
+            stage1_results = await stage1_collect_responses(msg_request.content)
             yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
 
             # Stage 2: Collect rankings
             yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
-            stage2_results, label_to_model = await stage2_collect_rankings(request.content, stage1_results)
+            stage2_results, label_to_model = await stage2_collect_rankings(msg_request.content, stage1_results)
             aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
             yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': {'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}})}\n\n"
 
             # Stage 3: Synthesize final answer
             yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
-            stage3_result = await stage3_synthesize_final(request.content, stage1_results, stage2_results)
+            stage3_result = await stage3_synthesize_final(msg_request.content, stage1_results, stage2_results)
             yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result})}\n\n"
 
             # Wait for title generation if it was started
