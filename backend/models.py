@@ -20,7 +20,7 @@ DEFAULT_COUNCIL_MODELS = [
     "qwen/qwen3-235b-a22b-thinking-2507",
 ]
 
-DEFAULT_CHAIRMAN_MODEL = "openai/gpt-4o-mini"
+DEFAULT_CHAIRMAN_MODEL = "openai/gpt-5-mini"
 
 
 async def fetch_models_from_openrouter() -> dict[str, Any]:

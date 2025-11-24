@@ -17,7 +17,7 @@ SECRET_AUTH_TOKEN = os.getenv("SECRET_AUTH_TOKEN")
 # Production: Set to your deployed frontend URL(s)
 # Example: ALLOWED_ORIGINS=https://myapp.com,https://www.myapp.com
 ALLOWED_ORIGINS = os.getenv(
-    "ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000"
+    "ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000,http://0.0.0.0:5173"
 )
 
 # Council members - list of OpenRouter model identifiers
@@ -33,7 +33,7 @@ COUNCIL_MODELS = [
 # Chairman model - synthesizes final response
 # NOTE: This is a fallback value. Primary default is in backend/models.py
 # and can be configured per-conversation through the UI.
-CHAIRMAN_MODEL = "openai/gpt-4o-mini"
+CHAIRMAN_MODEL = "openai/gpt-5-mini"
 
 # OpenRouter API endpoint
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"

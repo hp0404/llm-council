@@ -29,9 +29,15 @@ from .models import format_models_for_ui, get_available_models
 app = FastAPI(title="LLM Council API")
 
 # Configure CORS - supports both development and production
-ALLOWED_ORIGINS = os.getenv(
-    "ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000"
-).split(",")
+# Allow all origins in development for easier access
+ALLOWED_ORIGINS_ENV = os.getenv("ALLOWED_ORIGINS", "")
+if ALLOWED_ORIGINS_ENV:
+    # If explicitly configured, use those origins
+    ALLOWED_ORIGINS = ALLOWED_ORIGINS_ENV.split(",")
+else:
+    # Otherwise, allow all origins (for development)
+    ALLOWED_ORIGINS = ["*"]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -384,4 +390,4 @@ async def send_message_stream(
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    uvicorn.run(app, host="0.0.0.0", port=5174)

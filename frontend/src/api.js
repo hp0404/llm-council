@@ -2,10 +2,24 @@
  * API client for the LLM Council backend.
  */
 
-const API_BASE = 'http://localhost:8001';
+// Dynamically determine API base URL
+// If accessing via remote IP, use that IP for the backend too
+// If accessing via localhost, use localhost for the backend
+const getApiBase = () => {
+  if (import.meta.env.VITE_API_BASE) {
+    return import.meta.env.VITE_API_BASE;
+  }
+  
+  // Use the same hostname as the frontend, but port 5174 for backend
+  const hostname = window.location.hostname;
+  const protocol = window.location.protocol;
+  return `${protocol}//${hostname}:5174`;
+};
+
+const API_BASE = getApiBase();
 
 // Auth token management - uses environment variable for localStorage key
-const AUTH_TOKEN_KEY = import.meta.env.VITE_AUTH_TOKEN_KEY;
+const AUTH_TOKEN_KEY = import.meta.env.VITE_AUTH_TOKEN_KEY || 'llm_council_auth_token';
 
 export const auth = {
   getToken() {
