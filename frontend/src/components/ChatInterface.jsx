@@ -3,14 +3,21 @@ import ReactMarkdown from 'react-markdown';
 import Stage1 from './Stage1';
 import Stage2 from './Stage2';
 import Stage3 from './Stage3';
+import ModelSelector from './ModelSelector';
+import { api } from '../api';
 import './ChatInterface.css';
 
 export default function ChatInterface({
   conversation,
   onSendMessage,
   isLoading,
+  availableModels,
+  modelsLoading,
+  onUpdateModels,
 }) {
   const [input, setInput] = useState('');
+  const [isModelSelectorOpen, setIsModelSelectorOpen] = useState(false);
+  const [currentModelConfig, setCurrentModelConfig] = useState(null);
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -20,6 +27,40 @@ export default function ChatInterface({
   useEffect(() => {
     scrollToBottom();
   }, [conversation]);
+
+  // Load model config when conversation changes
+  useEffect(() => {
+    if (conversation && conversation.id) {
+      loadModelConfig();
+    }
+  }, [conversation?.id]);
+
+  const loadModelConfig = async () => {
+    if (!conversation || !conversation.id) return;
+    try {
+      const config = await api.getConversationModels(conversation.id);
+      setCurrentModelConfig(config);
+    } catch (error) {
+      console.error('Failed to load model config:', error);
+    }
+  };
+
+  const handleOpenModelSelector = () => {
+    setIsModelSelectorOpen(true);
+  };
+
+  const handleSaveModels = async (councilModels, chairmanModel) => {
+    try {
+      await onUpdateModels(conversation.id, councilModels, chairmanModel);
+      setCurrentModelConfig({
+        council_models: councilModels,
+        chairman_model: chairmanModel,
+      });
+    } catch (error) {
+      console.error('Failed to save models:', error);
+      alert('Failed to update models. Please try again.');
+    }
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -50,6 +91,20 @@ export default function ChatInterface({
 
   return (
     <div className="chat-interface">
+      {conversation && (
+        <div className="chat-header">
+          <div className="chat-title">{conversation.title}</div>
+          <button
+            className="configure-models-button"
+            onClick={handleOpenModelSelector}
+            disabled={modelsLoading}
+            title="Configure models for this conversation"
+          >
+            ⚙️ Configure Models
+          </button>
+        </div>
+      )}
+      
       <div className="messages-container">
         {conversation.messages.length === 0 ? (
           <div className="empty-state">
@@ -140,6 +195,15 @@ export default function ChatInterface({
           </button>
         </form>
       )}
+
+      <ModelSelector
+        isOpen={isModelSelectorOpen}
+        onClose={() => setIsModelSelectorOpen(false)}
+        conversationId={conversation?.id}
+        availableModels={availableModels}
+        currentConfig={currentModelConfig}
+        onSave={handleSaveModels}
+      />
     </div>
   );
 }

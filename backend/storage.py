@@ -30,11 +30,15 @@ def create_conversation(conversation_id: str) -> Dict[str, Any]:
     """
     ensure_data_dir()
 
+    # Import here to avoid circular dependency
+    from .models import get_default_config
+    
     conversation = {
         "id": conversation_id,
         "created_at": datetime.utcnow().isoformat(),
         "title": "New Conversation",
-        "messages": []
+        "messages": [],
+        "model_config": get_default_config()
     }
 
     # Save to file
@@ -169,4 +173,50 @@ def update_conversation_title(conversation_id: str, title: str):
         raise ValueError(f"Conversation {conversation_id} not found")
 
     conversation["title"] = title
+    save_conversation(conversation)
+
+
+def get_conversation_models(conversation_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Get the model configuration for a conversation.
+
+    Args:
+        conversation_id: Conversation identifier
+
+    Returns:
+        Model config dict with council_models and chairman_model, or None if not found
+    """
+    conversation = get_conversation(conversation_id)
+    if conversation is None:
+        return None
+    
+    # Return model config, or default if not present (for old conversations)
+    if "model_config" not in conversation:
+        from .models import get_default_config
+        return get_default_config()
+    
+    return conversation["model_config"]
+
+
+def update_conversation_models(
+    conversation_id: str,
+    council_models: List[str],
+    chairman_model: str
+):
+    """
+    Update the model configuration for a conversation.
+
+    Args:
+        conversation_id: Conversation identifier
+        council_models: List of model IDs for council members
+        chairman_model: Model ID for chairman
+    """
+    conversation = get_conversation(conversation_id)
+    if conversation is None:
+        raise ValueError(f"Conversation {conversation_id} not found")
+
+    conversation["model_config"] = {
+        "council_models": council_models,
+        "chairman_model": chairman_model
+    }
     save_conversation(conversation)

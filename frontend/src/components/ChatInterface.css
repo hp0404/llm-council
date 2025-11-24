@@ -6,6 +6,46 @@
   background: #ffffff;
 }
 
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid #e0e0e0;
+  background: #fafafa;
+}
+
+.chat-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+}
+
+.configure-models-button {
+  padding: 8px 16px;
+  background: #4a90e2;
+  border: 1px solid #4a90e2;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.configure-models-button:hover:not(:disabled) {
+  background: #357abd;
+  border-color: #357abd;
+}
+
+.configure-models-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .messages-container {
   flex: 1;
   overflow-y: auto;

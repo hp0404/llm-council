@@ -16,6 +16,7 @@ from time import time
 from . import storage
 from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
 from .config import SECRET_AUTH_TOKEN
+from .models import get_available_models, format_models_for_ui
 
 app = FastAPI(title="LLM Council API")
 
@@ -128,6 +129,20 @@ async def root():
     return {"status": "ok", "service": "LLM Council API"}
 
 
+@app.get("/api/models")
+async def list_models(request: Request = None, authenticated: bool = Depends(verify_token)):
+    """
+    Get list of available models from OpenRouter.
+    Requires authentication.
+    """
+    try:
+        models_data = await get_available_models()
+        formatted = format_models_for_ui(models_data)
+        return {"models": formatted}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch models: {str(e)}")
+
+
 @app.get("/api/conversations", response_model=List[ConversationMetadata])
 async def list_conversations(request: Request, authenticated: bool = Depends(verify_token)):
     """List all conversations (metadata only). Requires authentication."""
@@ -149,6 +164,46 @@ async def get_conversation(conversation_id: str, request: Request = None, authen
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return conversation
+
+
+@app.get("/api/conversations/{conversation_id}/models")
+async def get_conversation_models(conversation_id: str, request: Request = None, authenticated: bool = Depends(verify_token)):
+    """
+    Get the model configuration for a conversation.
+    Requires authentication.
+    """
+    model_config = storage.get_conversation_models(conversation_id)
+    if model_config is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return model_config
+
+
+class UpdateModelsRequest(BaseModel):
+    """Request to update conversation models."""
+    council_models: List[str]
+    chairman_model: str
+
+
+@app.put("/api/conversations/{conversation_id}/models")
+async def update_conversation_models(
+    conversation_id: str,
+    models_request: UpdateModelsRequest,
+    request: Request = None,
+    authenticated: bool = Depends(verify_token)
+):
+    """
+    Update the model configuration for a conversation.
+    Requires authentication.
+    """
+    try:
+        storage.update_conversation_models(
+            conversation_id,
+            models_request.council_models,
+            models_request.chairman_model
+        )
+        return {"status": "ok", "message": "Models updated successfully"}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @app.post("/api/conversations/{conversation_id}/message")
@@ -174,9 +229,14 @@ async def send_message(conversation_id: str, msg_request: SendMessageRequest, re
         title = await generate_conversation_title(msg_request.content)
         storage.update_conversation_title(conversation_id, title)
 
-    # Run the 3-stage council process
+    # Get conversation-specific model configuration
+    model_config = storage.get_conversation_models(conversation_id)
+    
+    # Run the 3-stage council process with conversation-specific models
     stage1_results, stage2_results, stage3_result, metadata = await run_full_council(
-        msg_request.content
+        msg_request.content,
+        council_models=model_config['council_models'],
+        chairman_model=model_config['chairman_model']
     )
 
     # Add assistant message with all stages
@@ -215,6 +275,9 @@ async def send_message_stream(conversation_id: str, msg_request: SendMessageRequ
         try:
             # Add user message
             storage.add_user_message(conversation_id, msg_request.content)
+            
+            # Get conversation-specific model configuration
+            model_config = storage.get_conversation_models(conversation_id)
 
             # Start title generation in parallel (don't await yet)
             title_task = None
@@ -223,18 +286,30 @@ async def send_message_stream(conversation_id: str, msg_request: SendMessageRequ
 
             # Stage 1: Collect responses
             yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
-            stage1_results = await stage1_collect_responses(msg_request.content)
+            stage1_results = await stage1_collect_responses(
+                msg_request.content,
+                council_models=model_config['council_models']
+            )
             yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
 
             # Stage 2: Collect rankings
             yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
-            stage2_results, label_to_model = await stage2_collect_rankings(msg_request.content, stage1_results)
+            stage2_results, label_to_model = await stage2_collect_rankings(
+                msg_request.content,
+                stage1_results,
+                council_models=model_config['council_models']
+            )
             aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
             yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': {'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}})}\n\n"
 
             # Stage 3: Synthesize final answer
             yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
-            stage3_result = await stage3_synthesize_final(msg_request.content, stage1_results, stage2_results)
+            stage3_result = await stage3_synthesize_final(
+                msg_request.content,
+                stage1_results,
+                stage2_results,
+                chairman_model=model_config['chairman_model']
+            )
             yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result})}\n\n"
 
             # Wait for title generation if it was started

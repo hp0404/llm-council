@@ -11,6 +11,8 @@ function App() {
   const [currentConversationId, setCurrentConversationId] = useState(null);
   const [currentConversation, setCurrentConversation] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [availableModels, setAvailableModels] = useState([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
 
   // Check authentication on mount
   useEffect(() => {
@@ -29,10 +31,11 @@ function App() {
     }
   }, []);
 
-  // Load conversations on mount (only when authenticated)
+  // Load conversations and models on mount (only when authenticated)
   useEffect(() => {
     if (isAuthenticated) {
       loadConversations();
+      loadAvailableModels();
     }
   }, [isAuthenticated]);
 
@@ -52,6 +55,21 @@ function App() {
       if (error.message === 'Authentication failed') {
         setIsAuthenticated(false);
       }
+    }
+  };
+
+  const loadAvailableModels = async () => {
+    setModelsLoading(true);
+    try {
+      const result = await api.getAvailableModels();
+      setAvailableModels(result.models || []);
+    } catch (error) {
+      console.error('Failed to load models:', error);
+      if (error.message === 'Authentication failed') {
+        setIsAuthenticated(false);
+      }
+    } finally {
+      setModelsLoading(false);
     }
   };
 
@@ -218,6 +236,20 @@ function App() {
     setIsAuthenticated(true);
   };
 
+  const handleUpdateModels = async (conversationId, councilModels, chairmanModel) => {
+    try {
+      await api.updateConversationModels(conversationId, councilModels, chairmanModel);
+      // Reload the conversation to get updated model config
+      await loadConversation(conversationId);
+    } catch (error) {
+      console.error('Failed to update models:', error);
+      if (error.message === 'Authentication failed') {
+        setIsAuthenticated(false);
+      }
+      throw error;
+    }
+  };
+
   // Show login screen if not authenticated
   if (!isAuthenticated) {
     return <Login onAuthenticated={handleAuthenticated} />;
@@ -235,6 +267,9 @@ function App() {
         conversation={currentConversation}
         onSendMessage={handleSendMessage}
         isLoading={isLoading}
+        availableModels={availableModels}
+        modelsLoading={modelsLoading}
+        onUpdateModels={handleUpdateModels}
       />
     </div>
   );

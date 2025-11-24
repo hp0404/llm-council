@@ -18,15 +18,19 @@ SECRET_AUTH_TOKEN = os.getenv("SECRET_AUTH_TOKEN")
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000")
 
 # Council members - list of OpenRouter model identifiers
+# NOTE: These are fallback values. Primary defaults are in backend/models.py
+# and can be configured per-conversation through the UI.
 COUNCIL_MODELS = [
-    "openai/gpt-5.1",
-    "google/gemini-3-pro-preview",
-    "anthropic/claude-sonnet-4.5",
-    "x-ai/grok-4",
+    "openai/gpt-oss-20b",
+    "openai/gpt-oss-120b",
+    "qwen/qwen3-30b-a3b-thinking-2507",
+    "qwen/qwen3-235b-a22b-thinking-2507",
 ]
 
 # Chairman model - synthesizes final response
-CHAIRMAN_MODEL = "google/gemini-3-pro-preview"
+# NOTE: This is a fallback value. Primary default is in backend/models.py
+# and can be configured per-conversation through the UI.
+CHAIRMAN_MODEL = "openai/gpt-4o-mini"
 
 # OpenRouter API endpoint
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"

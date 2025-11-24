@@ -175,4 +175,66 @@ export const api = {
       }
     }
   },
+
+  /**
+   * Get list of available models from OpenRouter.
+   */
+  async getAvailableModels() {
+    const response = await fetch(`${API_BASE}/api/models`, {
+      headers: getAuthHeaders(),
+    });
+    if (!response.ok) {
+      if (response.status === 401) {
+        auth.clearToken();
+        throw new Error('Authentication failed');
+      }
+      throw new Error('Failed to fetch models');
+    }
+    return response.json();
+  },
+
+  /**
+   * Get the model configuration for a conversation.
+   */
+  async getConversationModels(conversationId) {
+    const response = await fetch(
+      `${API_BASE}/api/conversations/${conversationId}/models`,
+      {
+        headers: getAuthHeaders(),
+      }
+    );
+    if (!response.ok) {
+      if (response.status === 401) {
+        auth.clearToken();
+        throw new Error('Authentication failed');
+      }
+      throw new Error('Failed to get conversation models');
+    }
+    return response.json();
+  },
+
+  /**
+   * Update the model configuration for a conversation.
+   */
+  async updateConversationModels(conversationId, councilModels, chairmanModel) {
+    const response = await fetch(
+      `${API_BASE}/api/conversations/${conversationId}/models`,
+      {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          council_models: councilModels,
+          chairman_model: chairmanModel,
+        }),
+      }
+    );
+    if (!response.ok) {
+      if (response.status === 401) {
+        auth.clearToken();
+        throw new Error('Authentication failed');
+      }
+      throw new Error('Failed to update conversation models');
+    }
+    return response.json();
+  },
 };
